@@ -67,7 +67,18 @@ const defaults={categories:[
 const migrate=(raw)=>{const obj=raw&&typeof raw==='object'?raw:clone(defaults);const mapping={design:'image',geo:'maps'};obj.apps=Array.isArray(obj.apps)?obj.apps:clone(defaults.apps);obj.categories=Array.isArray(obj.categories)?obj.categories:[];
 for(const a of obj.apps){if(mapping[a.category])a.category=mapping[a.category];if(a.category==='docs'&&(/pdf|pageforge/i.test(a.name)))a.category='pdf';}
 const builtins=clone(defaults.categories);const extras=obj.categories.filter(c=>!builtins.some(x=>x.id===c.id)&&!mapping[c.id]);obj.categories=[...builtins,...extras];return obj;};
-const $=id=>document.getElementById(id),clone=x=>JSON.parse(JSON.stringify(x));let state;try{state=migrate(JSON.parse(localStorage.getItem(KEY)));if(!Array.isArray(state.apps)||!Array.isArray(state.categories))throw Error();}catch(e){state=clone(defaults)}let selected='all',draftIcon=null,draftPreview=null;
+const $=id=>document.getElementById(id),clone=x=>JSON.parse(JSON.stringify(x));
+ const LEGACY_KEYS=['apphub-studio-v12','apphub-studio-v11'];
+ const legacyCategory=name=>{const n=String(name||'').toLowerCase();if(/pdf|pageforge/.test(n))return 'pdf';if(/doc|markdown/.test(n))return 'docs';if(/draw|imagem|picture/.test(n))return 'image';if(/audio|mp3|spotify|concert/.test(n))return 'audio';if(/geo|gps|map/.test(n))return 'maps';if(/web|landing|loop/.test(n))return 'web';if(/turismo|imersiva/.test(n))return 'internet';return 'tools'};
+ const legacyToCurrent=a=>({id:String(a.id||'legacy_'+a.name),name:a.name||'Sem nome',description:a.desc||a.description||'',category:legacyCategory(a.name),url:a.url||'',readmeUrl:a.readmeUrl||a.repo||'',readmeText:a.readmeText||'',icon:a.emoji||'◈',iconImage:a.icon||a.svg||null,preview:a.preview||null,previewUrl:a.previewUrl||''});
+ const getSaved=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
+ let state;const current=getSaved(KEY);state=current&&Array.isArray(current.apps)&&Array.isArray(current.categories)?migrate(current):clone(defaults);
+ const previous=LEGACY_KEYS.map(k=>({key:k,data:getSaved(k)})).find(x=>Array.isArray(x.data)&&x.data.length>0);
+ let restoredFromLegacy=0;
+ if(previous){const migrated=previous.data.map(legacyToCurrent);const existing=state.apps;const index=new Map(existing.map((a,i)=>[String(a.name||'').toLowerCase(),i]));for(const a of migrated){const i=index.get(String(a.name||'').toLowerCase());if(i===undefined){existing.push(a);restoredFromLegacy++}else{const entry=existing[i];if(!entry.url&&a.url)entry.url=a.url;if(!entry.iconImage&&a.iconImage)entry.iconImage=a.iconImage;if(!entry.readmeUrl&&a.readmeUrl)entry.readmeUrl=a.readmeUrl;if(!entry.description&&a.description)entry.description=a.description;restoredFromLegacy++}}}
+ let selected='all',draftIcon=null,draftPreview=null;
+ if(previous&&restoredFromLegacy){try{localStorage.setItem('apphub-legacy-rescue-'+previous.key,JSON.stringify(previous.data));localStorage.setItem(KEY,JSON.stringify(state))}catch(e){console.warn('Não foi possível salvar a migração. Os dados antigos foram preservados.',e)}}
+
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state));return true}catch(e){alert('Armazenamento do navegador cheio. Reduza o tamanho das imagens ou exporte um backup.');return false}};
 const escaped=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const allowedUrl=u=>{u=(u||'').trim();if(!u)return '';if(/^\s*(javascript|data|vbscript):/i.test(u))return '';return u};
@@ -96,6 +107,7 @@ $('addCategory').onclick=()=>{const name=$('newCategory').value.trim();if(!name)
 $('exportData').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='apphub-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)};
 $('importData').onclick=()=>$('fileImport').click();$('fileImport').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());if(!Array.isArray(obj.apps)||!Array.isArray(obj.categories))throw Error();if(!confirm('Substituir sua biblioteca atual pelos dados do backup?'))return;state=migrate(obj);selected='all';save();render()}catch(err){alert('Arquivo de backup inválido.')}e.target.value=''};
 render();
+ if(previous&&restoredFromLegacy){const msg=document.createElement('div');msg.style.cssText='position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:5000;background:#173d30;border:1px solid #3aaf83;border-radius:12px;color:white;padding:12px 16px;box-shadow:0 9px 30px #000a;max-width:90vw';msg.innerHTML='<strong>Catálogo anterior recuperado.</strong> Verifique os aplicativos e clique em Backup para salvar uma cópia. <button type="button" style="margin-left:8px;padding:5px 10px;border-radius:7px;cursor:pointer">Fechar</button>';msg.querySelector('button').onclick=()=>msg.remove();document.body.append(msg)}
 })();
 </script>
 </body></html>
